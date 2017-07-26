@@ -2,21 +2,22 @@
 import requests, getpass, datetime, calendar, os, sys
 
 # Set Hosts
-atsProd = 'atsprod.wvu.edu'
-soapProd = 'soaprod.wvu.edu'
-mapProd = 'mapprod.wvu.edu'
+atsProd = 'https://atsprod.wvu.edu'
+soapProd = 'https:soaprod.wvu.edu'
+mapProd = 'https://mapprod.wvu.edu'
+esdProd = 'https://esd.wvu.edu'
 
 # Set User Agents
-firefox = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36'
+agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36'
 
 # Set Accepts
-html = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+accepts = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
 
 # Set Languages
-english = 'en-US,en;q=0.8'
+langs = 'en-US,en;q=0.8'
 
 # Set Encodings
-gzip = 'gzip, deflate, br'
+encodings = 'gzip, deflate, br'
 
 # Set Connections
 alive = 'keep-alive'
@@ -28,17 +29,17 @@ esd = 'https://esd.wvu.edu/flexotllinks/OTLLinks.swf?nocache=0.3090389143550235'
 clock = 'https://esd.wvu.edu/webclock/WVUClock.swf'
 
 # Set Content Types
-xml = 'text/xml; charset=utf-8'
+contentType = 'text/xml; charset=utf-8'
 
 # Set SOAP Actions
 getStatus = '\"http://wvumap/GET_TIMECARD_HEADER.wsdl/callGetTimecardHeader\"'
 getTime = '\"http://wvuotlgettimecard/GET_TIMECARD_SERVICE.wsdl/callGetTimecard\"'
 getName = '\"http://edu/wvu/common/WVU_LRS_GET_PERSON_DETAIL.wsdl/getPersonDetailXML\"'
 
-
+# Create access session
 session = requests.Session()
 
-# Authenticate with MyAccess
+# Authenticate with MyAccess and return if successful
 def authenticate(username, password):
     r = session.post('https://atsprod.wvu.edu/sso/auth', 
     data = {
@@ -52,24 +53,30 @@ def authenticate(username, password):
         'password':password}, 
     headers = {
         'Origin':'https://atsprod.wvu.edu',
-        'User-agent':firefox,
-        'Accept':html,
-        'Accept-Language':english,
-        'Accept-Encoding':gzip,
+        'User-agent':agent,
+        'Accept':accepts,
+        'Accept-Language':langs,
+        'Accept-Encoding':encodings,
         'Connection':alive,
         'Referer':ats,
         'Content-Type':'application/x-www-form-urlencoded',
         'SOAPAction':'null'
     })
 
+    #Check for authorization cookie
+    if "_WL_AUTHCOOKIE_JSESSIONID" in session.cookies:
+        return True
+    else:
+        return False
+
 # Build And Send Requests To Get Person ID
 def getPersonId(session):
     SSOData = session.get('https://soaprod.wvu.edu/WvuSSOEbizService/wvussoebizservice',
      headers = {
-        'Origin':'https://' + soapProd,
-        'User-agent':firefox,
-        'Accept':html,
-        'Accept-Language':english,
+        'Origin':soapProd,
+        'User-agent':agent,
+        'Accept':accepts,
+        'Accept-Language':langs,
         'Accept-Encoding':'null',
         'Connection':alive,
         'Referer':esd,
@@ -79,91 +86,105 @@ def getPersonId(session):
     personId = SSOText[SSOText.find("<personId>")+10:SSOText.find("</personId>")]
     return personId
 
-# Get the status WSDL, Response Needed For Setting The JSESSION Cookie
-def getWSDL(session):
-    WSDL = session.get('https://soaprod.wvu.edu/WvuOTLTimecardHeaderWs/GET_TIMECARD_HEADERSoapHttpPort?WSDL',
+# Set the JSESSION Cookie needed for Timecard related actions
+def setJSESSIONTimecardCookie(session):
+    request = session.get('https://soaprod.wvu.edu/WvuOTLTimecardHeaderWs/GET_TIMECARD_HEADERSoapHttpPort?WSDL',
      headers = {
-        'Origin':'https://' + soapProd,
-        'User-agent':firefox,
-        'Accept':html,
-        'Accept-Language':english,
-        'Accept-Encoding':gzip,
+        'Origin':soapProd,
+        'User-agent':agent,
+        'Accept':accepts,
+        'Accept-Language':langs,
+        'Accept-Encoding':encodings,
         'Connection':alive,
         'Referer':swf,
         'Content-Type':'null',
         'SOAPAction':'null'})
-    return WSDL
 
-# Get the clock WSDL, Response Needed For Setting The JSESSION Cookie
-def getWSDLClock(session):
-    WSDL = session.get('https://esd.wvu.edu/WvuOTLSSOServices/wvuotlssoservlet?408',
+# Set the JSESSION Cookie needed for punching in and out and assign assignment
+def setJSESSIONPunchCookie(session):
+    request = session.get('https://esd.wvu.edu/WvuOTLSSOServices/wvuotlssoservlet?408',
      headers = {
-        'User-agent':firefox,
-        'Accept':html,
-        'Accept-Language':english,
-        'Accept-Encoding':gzip,
+        'User-agent':agent,
+        'Accept':accepts,
+        'Accept-Language':langs,
+        'Accept-Encoding':encodings,
         'Connection':alive,
         'Referer':clock,
         'Content-Type':'null',
         'SOAPAction':'null'})
-    return WSDL
+    
+    # Parse out and return assignment
+    requestStr = str(request.text)
+    return requestStr[requestStr.find("<assignment>")+12:requestStr.find("</assignment>")]
 
 # Build And Send Requests To Get TimeCard Status
-def getTimeCardStatus(session, soapData):
-    status = session.post('https://soaprod.wvu.edu/WvuOTLTimecardHeaderWs/GET_TIMECARD_HEADERSoapHttpPort',
+def getTimeCardStatus(session, pesronID, startDate, endDate):
+    # Set JSESSION cookie
+    setJSESSIONTimecardCookie(session)
+    # Generate SOAP Envelope
+    soapData = buildSOAPStatusData (personId, startDate, endDate)
+    # Send Request
+    request = session.post('https://soaprod.wvu.edu/WvuOTLTimecardHeaderWs/GET_TIMECARD_HEADERSoapHttpPort',
       soapData,
       headers = {
-        'Origin':'https://' + soapProd,
-        'User-agent':firefox,
-        'Accept':html,
-        'Accept-Language':english,
+        'Origin':soapProd,
+        'User-agent':agent,
+        'Accept':accepts,
+        'Accept-Language':langs,
         'Accept-Encoding':'null',
         'Connection':alive,
         'Referer':swf,
-        'Content-Type':xml,
+        'Content-Type':contentType,
         'SOAPAction':getStatus
         })
 
-    StatusText = str(status.text)
+    # Parse out and return status
+    StatusText = str(request.text)
     return StatusText[StatusText.find("<ns0:employeeStatus>")+20:StatusText.find("</ns0:employeeStatus>")]
 
 # Build And Send Requests To Get TimeCard Status
+# TODO Make this function more useful????
 def getTimeCardTimes(session, soapData):
-    times = session.post('https://soaprod.wvu.edu/WvuOTLGetTimecardWs/GET_TIMECARD_SERVICESoapHttpPort',
+    request = session.post('https://soaprod.wvu.edu/WvuOTLGetTimecardWs/GET_TIMECARD_SERVICESoapHttpPort',
       soapData,
       headers = {
-        'Origin':'https://' + soapProd,
-        'User-agent':firefox,
-        'Accept':html,
-        'Accept-Language':english,
+        'Origin':soapProd,
+        'User-agent':agent,
+        'Accept':accepts,
+        'Accept-Language':langs,
         'Accept-Encoding':'null',
         'Connection':alive,
         'Referer':swf,
-        'Content-Type':xml,
+        'Content-Type':contentType,
         'SOAPAction':getTime
         })
+    return request
 
-    return times
+# Build And Send Requests To Punch in or out
+def punch(session, personId, time, inOut):
+    # Set JSESSION cookie and get assignment
+    assignment = setJSESSIONPunchCookie(session)
+    #Generate SOAP Envelope
+    soapData = buildSOAPPunchData(personId, assignment, inOut, time)
+    print(soapData)
+    #Send Request
+    #request = session.post('https://esd.wvu.edu/WvuOTLClockService/WVU_OTL_WEB_CLOCKSoapHttpPort',
+    #  soapData,
+    #  headers = {
+    #    'Origin':esdProd,
+    #    'User-agent':agent,
+    #    'Accept':'*/*',
+    #    'Accept-Language':langs,
+    #    'Accept-Encoding':encodings,
+    #    'Connection':alive,
+    #    'Referer':clock,
+    #    'Content-Type':contentType
+    #})
 
-# Build And Send Requests To clock out
-def clockOut(session, soapData):
-    status = session.post('https://esd.wvu.edu/WvuOTLClockService/WVU_OTL_WEB_CLOCKSoapHttpPort',
-      soapData,
-      headers = {
-        'Origin':'https://https://esd.wvu.edu',
-        'User-agent':firefox,
-        'Accept':'*/*',
-        'Accept-Language':english,
-        'Accept-Encoding':gzip,
-        'Connection':alive,
-        'Referer':clock,
-        'Content-Type':xml
-    })
+    #return request
 
-    return status
-
-# Builds SOAP Envelope For Status Request
-def buildSOAPStatusData (personID, startDate, endDate):
+# Builds SOAP Envelope For Timecard Status Request
+def buildSOAPStatusData (personId, startDate, endDate):
     soapDataTemplate = '''<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <SOAP-ENV:Body>
     <tns0:callGetTimecardHeaderElement xmlns:tns0="http://wvumap/GET_TIMECARD_HEADER.wsdl/types/">
@@ -178,11 +199,11 @@ def buildSOAPStatusData (personID, startDate, endDate):
     </tns0:callGetTimecardHeaderElement>
   </SOAP-ENV:Body>
 </SOAP-ENV:Envelope>'''
-    soapData = soapDataTemplate%(personID, startDate, endDate)
+    soapData = soapDataTemplate%(personId, startDate, endDate)
     return soapData
 
-# Builds SOAP Envelope For Times Request
-def buildSOAPTimesData (personID, startDate, endDate):
+# Builds SOAP Envelope For Timecard Time Request
+def buildSOAPTimesData (personId, startDate, endDate):
     soapDataTemplate = '''<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <SOAP-ENV:Body>
     <tns0:callGetTimecardElement xmlns:tns0="http://wvuotlgettimecard/GET_TIMECARD_SERVICE.wsdl/types/">
@@ -196,18 +217,18 @@ def buildSOAPTimesData (personID, startDate, endDate):
     </tns0:callGetTimecardElement>
   </SOAP-ENV:Body>
 </SOAP-ENV:Envelope>'''
-    soapData = soapDataTemplate%(personID, startDate, endDate)
+    soapData = soapDataTemplate%(personId, startDate, endDate)
     return soapData
 
-# Builds SOAP Envelope For Times Request
-def buildSOAPClockData(personID, time):
+# Builds SOAP Envelope For Punch Request
+def buildSOAPPunchData(personId, assignment, inOut, time):
     soapDataTemplate = '''<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <SOAP-ENV:Body xmlns:ns1="http://wvu_ats_dev/WVU_OTL_WEB_CLOCK.wsdl/types/">
     <ns1:callInsertClockTransactionElement>
       <ns1:pPersonId>%s</ns1:pPersonId>
-      <ns1:pAssignmentNumber>02 Seery, Marc H</ns1:pAssignmentNumber>
+      <ns1:pAssignmentNumber>%s</ns1:pAssignmentNumber>
       <ns1:pClockedTime>%s</ns1:pClockedTime>
-      <ns1:pClockedType>O</ns1:pClockedType>
+      <ns1:pClockedType>%s</ns1:pClockedType>
       <ns1:pBadgeNumber></ns1:pBadgeNumber>
       <ns1:pGuid></ns1:pGuid>
       <ns1:pSourceType>W</ns1:pSourceType>
@@ -220,9 +241,10 @@ def buildSOAPClockData(personID, time):
     </ns1:callInsertClockTransactionElement>
   </SOAP-ENV:Body>
 </SOAP-ENV:Envelope>'''
-    soapData = soapDataTemplate%(personID, time)
+    soapData = soapDataTemplate%(personId, assignment, time, inOut)
     return soapData
 
+# Build dates dict with current, start, and end pay period dates
 def getDates():
     dates = []
     # Get The Current Date
@@ -251,27 +273,26 @@ def getDates():
     dates.append(endDate)
     return dates
 
+# Get Formatted Current Time
 def getFormattedCurrentTime():
     return datetime.datetime.now().strftime("%Y-%m-%dT%X.000-04:00")
 
-# What happens when script is run...
+# Get Formatted Time of current day with replaced hours and minutes
+def getFormattedTime(hour, minute):
+    return datetime.datetime.now().replace(hour = hour, minute = minute, second = 0).strftime("%Y-%m-%dT%X.000-04:00")
+
+# Testing...
 username = input('Enter a username: ')
 password = getpass.getpass('Enter a password: ')
 auth = authenticate(username, password) #TODO check if authentication was successful
+print('Authorized: ' + str(auth))
 personId = getPersonId(session)
-#getWSDL(session)
+print('Person Id: ' + personId)
 dates = getDates()
-timeCardStatus = getTimeCardStatus(session, buildSOAPStatusData(personId, dates[1], dates[2]))
-print('----------------------')
-print('PersonId: ' + personId)
-print('Timecard Status: ' + timeCardStatus)
-timeCardTimes = getTimeCardTimes(session, buildSOAPTimesData(personId, dates[1], dates[2]))
-print(timeCardTimes.text)
-print()
-print('----------------')
-a = getWSDLClock(session)
-print(a.headers)
-print(a.text)
-print(clockOut(session, buildSOAPClockData(personId, getFormattedCurrentTime())).text)
-
-#datetime.datetime.now().replace(hour=15, minute = 0, second = 0).strftime("%Y-%m-%dT%X.000-04:00")
+timeCardStatus = getTimeCardStatus(session, personId, dates[1], dates[2])
+#timeCardTimes = getTimeCardTimes(session, buildSOAPTimesData(personId, dates[1], dates[2]))
+punch(session, personId, getFormattedCurrentTime(), 'I')
+print('-------------------------')
+punch(session, personId, getFormattedCurrentTime(), 'O')
+print('-------------------------')
+punch(session, personId, getFormattedTime(10,30), 'O')
