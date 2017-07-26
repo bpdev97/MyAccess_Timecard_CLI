@@ -32,7 +32,7 @@ xml = 'text/xml; charset=utf-8'
 
 session = requests.Session()
 
-#Authenticate with MyAccess
+# Authenticate with MyAccess
 def authenticate(username, password):
     r = session.post('https://atsprod.wvu.edu/sso/auth', 
     data = {
@@ -56,10 +56,9 @@ def authenticate(username, password):
         'SOAPAction':'null'
     })
 
-    return session
-
+# Build And Send Requests To Get Person ID
 def getPersonId(session):
-    r = session.get('https://soaprod.wvu.edu/WvuSSOEbizService/wvussoebizservice',
+    SSOData = session.get('https://soaprod.wvu.edu/WvuSSOEbizService/wvussoebizservice',
      headers = {
         'Origin':'https://' + soapProd,
         'User-agent':firefox,
@@ -70,10 +69,28 @@ def getPersonId(session):
         'Referer':esd,
         'Content-Type':'null',
         'SOAPAction':'null'})
-    return r
+    SSOText = str(SSOData.text)
+    personId = SSOText[SSOText.find("<personId>")+10:SSOText.find("</personId>")]
+    return personId
+
+# Get the status WSDL, Response Needed For Setting The JSESSION Cookie
+def getWSDL(session):
+    WSDL = session.get('https://soaprod.wvu.edu/WvuOTLTimecardHeaderWs/GET_TIMECARD_HEADERSoapHttpPort?WSDL',
+     headers = {
+        'Origin':'https://' + soapProd,
+        'User-agent':firefox,
+        'Accept':html,
+        'Accept-Language':english,
+        'Accept-Encoding':gzip,
+        'Connection':alive,
+        'Referer':swf,
+        'Content-Type':'null',
+        'SOAPAction':'null'})
+    return WSDL
 
 username = input('Enter a username: ')
 password = getpass.getpass('Enter a password: ')
-auth = authenticate(username, password)
-sso = getSSO(auth)
-
+auth = authenticate(username, password) #TODO check if authentication was successful
+personId = getPersonId(session)
+print('PersonId: ' + personId)
+getWSDL()
