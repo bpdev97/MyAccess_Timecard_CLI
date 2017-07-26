@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-import requests
-import getpass
+import requests, getpass, datetime, calendar, os, sys
 
 # Set Hosts
 atsProd = 'atsprod.wvu.edu'
@@ -29,6 +28,12 @@ esd = 'https://esd.wvu.edu/flexotllinks/OTLLinks.swf?nocache=0.3090389143550235'
 
 # Set Content Types
 xml = 'text/xml; charset=utf-8'
+
+# Set SOAP Actions
+getStatus = '\"http://wvumap/GET_TIMECARD_HEADER.wsdl/callGetTimecardHeader\"'
+getTime = '\"http://wvuotlgettimecard/GET_TIMECARD_SERVICE.wsdl/callGetTimecard\"'
+getName = '\"http://edu/wvu/common/WVU_LRS_GET_PERSON_DETAIL.wsdl/getPersonDetailXML\"'
+
 
 session = requests.Session()
 
@@ -88,9 +93,80 @@ def getWSDL(session):
         'SOAPAction':'null'})
     return WSDL
 
+# Build And Send Requests To Get TimeCard Status
+def getTimeCardStatus(session, soapData):
+    status = session.post('https://soaprod.wvu.edu/WvuOTLTimecardHeaderWs/GET_TIMECARD_HEADERSoapHttpPort',
+      soapData,
+      headers = {
+        'Origin':'https://' + soapProd,
+        'User-agent':firefox,
+        'Accept':html,
+        'Accept-Language':english,
+        'Accept-Encoding':'null',
+        'Connection':alive,
+        'Referer':swf,
+        'Content-Type':xml,
+        'SOAPAction':getStatus
+        })
+
+    StatusText = str(status.text)
+    return StatusText[StatusText.find("<ns0:employeeStatus>")+20:StatusText.find("</ns0:employeeStatus>")]
+
+# Builds SOAP Envelope For Status Request
+def buildSOAPStatusData (personID, startDate, endDate):
+    soapDataTemplate = '''<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <SOAP-ENV:Body>
+    <tns0:callGetTimecardHeaderElement xmlns:tns0="http://wvumap/GET_TIMECARD_HEADER.wsdl/types/">
+      <tns0:pPersonId>%s</tns0:pPersonId>
+      <tns0:pPeriodStartDate>%s</tns0:pPeriodStartDate>
+      <tns0:pPeriodEndDate>%s</tns0:pPeriodEndDate>
+      <tns0:pAssignmentId>-1</tns0:pAssignmentId>
+      <tns0:pSupervisorId>-1</tns0:pSupervisorId>
+      <tns0:pAttribute1 xsi:nil="true"/>
+      <tns0:pAttribute2 xsi:nil="true"/>
+      <tns0:pAttribute3 xsi:nil="true"/>
+    </tns0:callGetTimecardHeaderElement>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>'''
+    soapData = soapDataTemplate%(personID, startDate, endDate)
+    return soapData
+
+def getDates():
+    dates = []
+    # Get The Current Date
+    now = datetime.datetime.now()
+    year = str(now.year)
+    month =  str(now.month)
+    day = str(now.day)
+    # Get The Last Day Of The Month
+    lastDayOfMonth = str(calendar.monthrange(now.year,now.month)[1])
+    # Add A Zero If Month Or Day Is Only One Character
+    if len(month) == 1:
+        month = '0' + month
+    if len(day) == 1:
+        day = '0' + day
+    # Put The Dates In XML Date Data Type Format
+    if (now.day >= 1 and now.day <= 15):
+        startDate = year + '-' + month + '-' + '01Z'
+        endDate = year + '-' + month + '-' + '15Z'
+    else:
+        startDate = year + '-' + month + '-' + '16Z'
+        endDate = year + '-' + month + '-' + lastDayOfMonth + 'Z'
+    currentDate = year + '-' + month + '-' + day + 'Z'
+    # Add The Dates To A List
+    dates.append(currentDate)
+    dates.append(startDate)
+    dates.append(endDate)
+    return dates
+
+# What happens when script is run...
 username = input('Enter a username: ')
 password = getpass.getpass('Enter a password: ')
 auth = authenticate(username, password) #TODO check if authentication was successful
 personId = getPersonId(session)
+getWSDL(session)
+dates = getDates()
+timeCardStatus = getTimeCardStatus(session, buildSOAPStatusData(personId, dates[1], dates[2]))
+print('----------------------')
 print('PersonId: ' + personId)
-getWSDL()
+print('Timecard Status: ' + timeCardStatus)
