@@ -164,24 +164,23 @@ def getTimeCardTimes(session, soapData):
 def punch(session, personId, time, inOut):
     # Set JSESSION cookie and get assignment
     assignment = setJSESSIONPunchCookie(session)
-    #Generate SOAP Envelope
+    # Generate SOAP Envelope
     soapData = buildSOAPPunchData(personId, assignment, inOut, time)
-    print(soapData)
     #Send Request
-    #request = session.post('https://esd.wvu.edu/WvuOTLClockService/WVU_OTL_WEB_CLOCKSoapHttpPort',
-    #  soapData,
-    #  headers = {
-    #    'Origin':esdProd,
-    #    'User-agent':agent,
-    #    'Accept':'*/*',
-    #    'Accept-Language':langs,
-    #    'Accept-Encoding':encodings,
-    #    'Connection':alive,
-    #    'Referer':clock,
-    #    'Content-Type':contentType
-    #})
+    request = session.post('https://esd.wvu.edu/WvuOTLClockService/WVU_OTL_WEB_CLOCKSoapHttpPort',
+      soapData,
+      headers = {
+        'Origin':esdProd,
+        'User-agent':agent,
+        'Accept':'*/*',
+        'Accept-Language':langs,
+        'Accept-Encoding':encodings,
+        'Connection':alive,
+        'Referer':clock,
+        'Content-Type':contentType
+    })
 
-    #return request
+    print(request.text)
 
 # Builds SOAP Envelope For Timecard Status Request
 def buildSOAPStatusData (personId, startDate, endDate):
@@ -281,18 +280,14 @@ def getFormattedCurrentTime():
 def getFormattedTime(hour, minute):
     return datetime.datetime.now().replace(hour = hour, minute = minute, second = 0).strftime("%Y-%m-%dT%X.000-04:00")
 
-# Testing...
-username = input('Enter a username: ')
-password = getpass.getpass('Enter a password: ')
-auth = authenticate(username, password) #TODO check if authentication was successful
-print('Authorized: ' + str(auth))
-personId = getPersonId(session)
-print('Person Id: ' + personId)
-dates = getDates()
-timeCardStatus = getTimeCardStatus(session, personId, dates[1], dates[2])
-#timeCardTimes = getTimeCardTimes(session, buildSOAPTimesData(personId, dates[1], dates[2]))
-punch(session, personId, getFormattedCurrentTime(), 'I')
-print('-------------------------')
-punch(session, personId, getFormattedCurrentTime(), 'O')
-print('-------------------------')
-punch(session, personId, getFormattedTime(10,30), 'O')
+# Testing clocks you In at current time
+# username = input('Enter a username: ')
+# password = getpass.getpass('Enter a password: ')
+# auth = authenticate(username, password) #TODO check if authentication was successful
+# print('Authorized: ' + str(auth))
+# personId = getPersonId(session)
+# print('Person Id: ' + personId)
+# dates = getDates()
+# timeCardStatus = getTimeCardStatus(session, personId, dates[1], dates[2])
+# #timeCardTimes = getTimeCardTimes(session, buildSOAPTimesData(personId, dates[1], dates[2]))
+# punch(session, personId, getFormattedCurrentTime(), 'I')
