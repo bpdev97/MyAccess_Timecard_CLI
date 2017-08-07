@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import requests, getpass, datetime, calendar, os, sys
 
+
 # Set Hosts
 atsProd = 'https://atsprod.wvu.edu'
 soapProd = 'https:soaprod.wvu.edu'
@@ -36,11 +37,32 @@ getStatus = '\"http://wvumap/GET_TIMECARD_HEADER.wsdl/callGetTimecardHeader\"'
 getTime = '\"http://wvuotlgettimecard/GET_TIMECARD_SERVICE.wsdl/callGetTimecard\"'
 getName = '\"http://edu/wvu/common/WVU_LRS_GET_PERSON_DETAIL.wsdl/getPersonDetailXML\"'
 
+# Show help menu if -h argument is specified
+def helpMenu():
+    if "-h" in sys.argv:
+        print("""
+		The purpose of this script is yet to be determined and will soon be filled in...
+		""")
+        exit()
+
+# Gets credentials from user
+def getCredentials():
+    global username, password
+    if "-u" in sys.argv and "-p" in sys.argv:
+        username = sys.argv[sys.argv.index("-u") + 1]
+        password = sys.argv[sys.argv.index("-p") + 1]
+    elif "--username" in sys.argv and "--password" in sys.argv: 
+        username = sys.argv[sys.argv.index("--username") + 1]
+        password = sys.argv[sys.argv.index("--password") + 1]
+    else:
+        username = input('Enter a username: ')
+        password = getpass.getpass('Enter a password: ')
+
 # Create access session
 session = requests.Session()
 
 # Authenticate with MyAccess and return if successful
-def authenticate(username, password):
+def authenticate():
     r = session.post('https://atsprod.wvu.edu/sso/auth', 
     data = {
         'p_action':'OK', 
@@ -63,7 +85,7 @@ def authenticate(username, password):
         'SOAPAction':'null'
     })
 
-    #Check for authorization cookie
+    # Check for authorization cookie
     if "_WL_AUTHCOOKIE_JSESSIONID" in session.cookies:
         return True
     else:
@@ -166,7 +188,7 @@ def punch(session, personId, time, inOut):
     assignment = setJSESSIONPunchCookie(session)
     # Generate SOAP Envelope
     soapData = buildSOAPPunchData(personId, assignment, inOut, time)
-    #Send Request
+    # Send Request
     request = session.post('https://esd.wvu.edu/WvuOTLClockService/WVU_OTL_WEB_CLOCKSoapHttpPort',
       soapData,
       headers = {
@@ -180,7 +202,14 @@ def punch(session, personId, time, inOut):
         'Content-Type':contentType
     })
 
-    print(request.text)
+    requestText = str(request.text)
+    if requestText[requestText.find("<ns0:pstatusOut>")+12:requestText.find("</ns0:pstatusOut>")] == "100 - NORMAL":
+        if inOut == "I":
+            return "Successful clock in at " + time + "."
+        else:
+            return "Successful clock out at " + time + "."
+    else:
+        return requestText
 
 # Builds SOAP Envelope For Timecard Status Request
 def buildSOAPStatusData (personId, startDate, endDate):
@@ -280,14 +309,24 @@ def getFormattedCurrentTime():
 def getFormattedTime(hour, minute):
     return datetime.datetime.now().replace(hour = hour, minute = minute, second = 0).strftime("%Y-%m-%dT%X.000-04:00")
 
-# Testing clocks you In at current time
-# username = input('Enter a username: ')
-# password = getpass.getpass('Enter a password: ')
-# auth = authenticate(username, password) #TODO check if authentication was successful
-# print('Authorized: ' + str(auth))
-# personId = getPersonId(session)
-# print('Person Id: ' + personId)
-# dates = getDates()
+# Main
+def main():
+    helpMenu()
+    getCredentials()
+    if authenticate():
+        personId = getPersonId(session)
+        dates = getDates()
+        # Check for punch argument
+        if "-i" in sys.argv or "--in" in sys.argv:
+            print(punch(session, personId, getFormattedCurrentTime(), "I"))
+        elif "-o" in sys.argv or "--out" in sys.argv:
+            print(punch(session, personId, getFormattedCurrentTime(), "O"))
+    else:
+        print('Invalid credentials!')
+        exit(1)
+main()
+
+# Left over functionality examples
+# -----------------------------------
 # timeCardStatus = getTimeCardStatus(session, personId, dates[1], dates[2])
 # #timeCardTimes = getTimeCardTimes(session, buildSOAPTimesData(personId, dates[1], dates[2]))
-# punch(session, personId, getFormattedCurrentTime(), 'I')
