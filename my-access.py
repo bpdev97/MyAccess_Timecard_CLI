@@ -38,12 +38,16 @@ getTime = '\"http://wvuotlgettimecard/GET_TIMECARD_SERVICE.wsdl/callGetTimecard\
 getName = '\"http://edu/wvu/common/WVU_LRS_GET_PERSON_DETAIL.wsdl/getPersonDetailXML\"'
 
 # Show help menu if -h argument is specified
-def helpMenu():
-    if "-h" in sys.argv:
-        print("""
-		The purpose of this script is yet to be determined and will soon be filled in...
-		""")
-        exit()
+def helpMenu(force):
+    if "-h" in sys.argv or force == 1:
+        print("""usage: python2 myaccess.py [--username] [--password] [--in] [--out] [--reset] [--help] 
+    -u specify username
+    -p specify password
+    -i clock in
+    -o clock out
+    -r reset password stored in keychain
+    -h display this screen""")
+        exit(0)
 
 # Gets credentials from user
 def getCredentials():
@@ -317,7 +321,7 @@ def getFormattedCurrentTime():
 
 # Main
 def main():
-    helpMenu()
+    helpMenu(0)
     getCredentials()
     if authenticate():
         personId = getPersonId(session)
@@ -327,6 +331,8 @@ def main():
             print(punch(session, personId, getFormattedCurrentTime(), "I"))
         elif "-o" in sys.argv or "--out" in sys.argv:
             print(punch(session, personId, getFormattedCurrentTime(), "O"))
+        else:
+            helpMenu(1)
     else:
         print('Invalid credentials! Consider resetting your keychain password with --resetPass if you have it setup')
         exit(1)
