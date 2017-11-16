@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import requests, getpass, datetime, calendar, os, sys
+import requests, keyring, getpass, datetime, calendar, os, sys
 
 
 # Set Hosts
@@ -48,15 +48,25 @@ def helpMenu():
 # Gets credentials from user
 def getCredentials():
     global username, password
-    if "-u" in sys.argv and "-p" in sys.argv:
+    if "-u" in sys.argv:
         username = sys.argv[sys.argv.index("-u") + 1]
-        password = sys.argv[sys.argv.index("-p") + 1]
-    elif "--username" in sys.argv and "--password" in sys.argv: 
+    elif "--username" in sys.argv:
         username = sys.argv[sys.argv.index("--username") + 1]
-        password = sys.argv[sys.argv.index("--password") + 1]
     else:
-        username = input('Enter a username: ')
-        password = getpass.getpass('Enter a password: ')
+        username = raw_input('Enter a username: ')
+    if "-p" in sys.argv:
+        password = sys.argv[sys.argv.index("-p") + 1]
+    elif "--password" in sys.argv:
+        username = sys.argv[sys.argv.index("--password") + 1]
+    elif "-r" in sys.argv or "--resetPass" in sys.argv:
+        password = getpass.getpass("Enter a new password to be stored in keychain for further use: ")
+        keyring.set_password("myaccess", username, password)
+        exit(0)
+    elif keyring.get_password("myaccess", username) is not None:
+        password = keyring.get_password("myaccess", username)
+    else:
+        password = getpass.getpass("Enter a password to be stored in keychain for further use: ")
+        keyring.set_password("myaccess", username, password)
 
 # Create access session
 session = requests.Session()
@@ -140,7 +150,7 @@ def setJSESSIONPunchCookie(session):
     return requestStr[requestStr.find("<assignment>")+12:requestStr.find("</assignment>")]
 
 # Build And Send Requests To Get TimeCard Status
-def getTimeCardStatus(session, pesronID, startDate, endDate):
+def getTimeCardStatus(session, personId, startDate, endDate):
     # Set JSESSION cookie
     setJSESSIONTimecardCookie(session)
     # Generate SOAP Envelope
@@ -305,10 +315,6 @@ def getDates():
 def getFormattedCurrentTime():
     return datetime.datetime.now().strftime("%Y-%m-%dT%X.000-04:00")
 
-# Get Formatted Time of current day with replaced hours and minutes
-def getFormattedTime(hour, minute):
-    return datetime.datetime.now().replace(hour = hour, minute = minute, second = 0).strftime("%Y-%m-%dT%X.000-04:00")
-
 # Main
 def main():
     helpMenu()
@@ -322,7 +328,7 @@ def main():
         elif "-o" in sys.argv or "--out" in sys.argv:
             print(punch(session, personId, getFormattedCurrentTime(), "O"))
     else:
-        print('Invalid credentials!')
+        print('Invalid credentials! Consider resetting your keychain password with --resetPass if you have it setup')
         exit(1)
 main()
 
